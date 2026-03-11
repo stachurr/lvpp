@@ -1,5 +1,6 @@
 # LVPP
 C++ binding for LVGL
+Bounty: https://github.com/lvgl/lv_binding_cpp
 
 ---
 
