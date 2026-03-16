@@ -1,5 +1,6 @@
 import os
-from typing import List, Set, Dict, Iterable, Callable
+from typing import List, Set, Dict, Iterable, Callable, Tuple
+from dataclasses import dataclass
 
 import pycparser
 import pycparser.c_ast as c_ast
@@ -150,8 +151,91 @@ class LVGLFuncDeclFinder:
                     f.write("  {} -- {}\n".format(node.name, fixed_coord))
                 f.write("\n")
 
+    def items(self):
+        return self._decls.items()
 
 
+
+@dataclass
+class LVGLFuncDeclParam:
+    is_const: bool
+    type: str
+    name: str
+
+def get_param_type(node) -> Tuple[bool, str]:
+    if isinstance(node, c_ast.PtrDecl):
+        is_const,name = get_param_type(node.type)
+        return (is_const, name + "*")
+    elif isinstance(node, c_ast.ArrayDecl):
+        is_const,name = get_param_type(node.type)
+        return (is_const, name + "[]")
+    elif isinstance(node, c_ast.TypeDecl):
+        if len(node.type.names) > 1:
+            raise Exception("unexpected number of names")
+        is_const = False
+        if node.quals:
+            if len(node.quals) > 1:
+                raise Exception("unexpected number of quals")
+            if node.quals[0] == "const":
+                is_const = True
+        return (is_const, node.type.names[0])
+    else:
+        raise Exception("unexpected node type")
+
+def get_param_name(node) -> str:
+    if isinstance(node, c_ast.PtrDecl):
+        return get_param_name(node.type)
+    elif isinstance(node, c_ast.ArrayDecl):
+        return get_param_name(node.type)
+    elif isinstance(node, c_ast.TypeDecl):
+        return node.declname
+    else:
+        raise Exception("unexpected node type")
+
+def get_funcDecl_params(decl: c_ast.FuncDecl):
+    if not isinstance(decl, c_ast.FuncDecl):
+        raise TypeError("Must be a FuncDecl")
+    
+    params: List[LVGLFuncDeclParam] = []
+    for p in decl.args.params:
+        is_const, type = get_param_type(p.type)
+        name = get_param_name(p.type)
+        params.append(LVGLFuncDeclParam(is_const, type, name))
+    return params
+    
+
+
+
+def pretty_print_FuncDecl(decl: c_ast.Decl):
+    if not isinstance(decl, c_ast.Decl):
+        raise TypeError("must be a Decl")
+    if not isinstance(decl.type, c_ast.FuncDecl):
+        raise TypeError("must be a FuncDecl")
+
+    pretty = colors.yellow(decl.name)
+    pretty += "("
+    for p in get_funcDecl_params(decl.type):
+        if p.is_const:
+            pretty += colors.magenta("const ")
+        if p.type.endswith("*"):
+            lhs,rhs = p.type.split("*", maxsplit=1)
+            rhs += "*"
+            pretty += colors.cyan(lhs)
+            pretty += colors.red(rhs)
+        elif p.type.endswith("[]"):
+            lhs,rhs = p.type.split("[]", maxsplit=1)
+            rhs += "[]"
+            pretty += colors.cyan(lhs)
+            pretty += colors.red(rhs)
+        else:
+            pretty += colors.cyan(p.type)
+        pretty += " "
+        pretty += colors.gray(p.name)
+        pretty += ", "
+    if pretty.endswith(", "):
+        pretty = pretty.removesuffix(", ")
+    pretty += ")"
+    print(pretty)
 
 
 def setup_env():
@@ -181,9 +265,16 @@ def main():
     )
     v = LVGLFuncDeclFinder(prefixes)
     v.find(collect_h_file_paths(os.path.join("lvgl", "src")))
-    v._print_findings_summary()
-    if WRITE_FINDINGS_TO_FILE:
-        v._write_findings("findings.txt")
+
+    # v._print_findings_summary()
+    # if WRITE_FINDINGS_TO_FILE:
+    #     v._write_findings("findings.txt")
+
+    for prefix,decls in v.items():
+        if prefix == "lv_obj_":
+            for d in decls:
+                # print(d.name, get_funcDecl_params(d.type))
+                pretty_print_FuncDecl(d)
 
 
 
