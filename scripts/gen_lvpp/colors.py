@@ -5,8 +5,13 @@ if __name__ == "__main__":
 
 
 
-def _make_color(s: str, v: int):
-    return "\x1b[{}m{}\x1b[39m".format(v, s)
+def _make_color(s: str, v: int, *, reset: bool = True):
+    s = "\x1b[{}m{}".format(v, s)
+
+    if reset:
+        s += "\x1b[39m"
+
+    return s
 
 def _constrain_255(v: int):
     return min(255, max(0, v))
@@ -36,16 +41,21 @@ def cyan(s: str):
 
 
 
-def rgb(s: str, r: int, g: int, b: int):
+def rgb(s: str, r: int, g: int, b: int, *, reset: bool = True):
     r = _constrain_255(r)
     g = _constrain_255(g)
     b = _constrain_255(b)
-    return _make_color(s, "38;2;{};{};{}".format(r,g,b))
+    return _make_color(s, "38;2;{};{};{}".format(r,g,b), reset=reset)
 
-def hex(s: str, hexcode: int):
+def hex(s: str, hexcode: int, *, reset: bool = True):
     b = hexcode & 0xff
     hexcode >>= 8
     g = hexcode & 0xff
     hexcode >>= 8
     r = hexcode & 0xff
-    return rgb(s, r, g, b)
+    return rgb(s, r, g, b, reset=reset)
+
+
+
+def reset(s: str):
+    return s + "\x1b[0m"

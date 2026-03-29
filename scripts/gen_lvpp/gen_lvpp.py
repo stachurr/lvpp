@@ -88,7 +88,7 @@ class NodeTypeAndName:
         _node:          c_ast.Node      = node
 
         while True:
-            quals = getattr(node, "quals", None)
+            quals = getattr(node, "quals", [])
 
             if isinstance(node, c_ast.PtrDecl):
                 pointers.append("*")
@@ -98,8 +98,7 @@ class NodeTypeAndName:
                 array_quals.append(quals)
             elif isinstance(node, c_ast.TypeDecl):
                 name = node.declname
-                if quals is not None:
-                    type_quals = quals
+                type_quals = quals
             elif isinstance(node, c_ast.IdentifierType):
                 types = node.names
                 break
@@ -119,65 +118,106 @@ class NodeTypeAndName:
     def __str__(self):
         return self.formatted()
 
+    def _stringify_type_name(self, colored: bool):
+        s = ""
+
+        if self.type_quals:
+            temp = " ".join(self.type_quals)
+            if colored:
+                s += colors.hex(temp + " ", QUALIFIER_COLOR, reset=False)
+            else:
+                s += temp + " "
+        
+        temp = " ".join(self.types)
+        if colored:
+            s += colors.hex(temp, TYPE_COLOR, reset=False)
+        else:
+            s += temp
+
+        s = s.strip(" ")
+        if colored:
+            s = colors.reset(s)
+        return s
+
+    def _stringify_type_pointers(self, colored: bool):
+        s = ""
+
+        for pointer,quals in zip(self.pointers, self.pointer_quals):
+            if colored:
+                s += colors.hex(pointer, POINTER_COLOR, reset=False)
+            else:
+                s += pointer
+            
+            if quals:
+                if self.name == "lv_obj_null_on_delete":
+                    input("quals = {}".format(quals))
+                temp = " " + " ".join(quals) + " "
+                if colored:
+                    s += colors.hex(temp, QUALIFIER_COLOR, reset=False)
+                else:
+                    s += temp
+
+        # if self.name == "lv_obj_null_on_delete":
+        #     input("BEFORE STRIP: '{}'".format(s))
+        
+        s = s.strip(" ")
+
+        # if self.name == "lv_obj_null_on_delete":
+        #     input("AFTER STRIP: '{}'".format(s))
+            
+        if colored:
+            s = colors.reset(s)
+        return s
+
+    def _stringify_name(self, colored: bool):
+        s = ""
+
+        if colored:
+            if isinstance(self._node, c_ast.FuncDecl):
+                s += colors.hex(self.name, FUNC_NAME_COLOR, reset=False)
+            else:
+                s += colors.hex(self.name, VAR_NAME_COLOR, reset=False)
+        else:
+            s += self.name
+        
+        s = s.strip(" ")
+        if colored:
+            s = colors.reset(s)
+        return s
+
+    def _stringify_arrays(self, colored: bool):
+        s = ""
+
+        for array,quals in zip(self.arrays, self.array_quals):
+            if colored:
+                s += colors.hex(array, POINTER_COLOR, reset=False)
+            else:
+                s += array
+
+            if quals:
+                temp = " ".join(quals)
+                if colored:
+                    s += colors.hex(temp, QUALIFIER_COLOR, reset=False)
+                else:
+                    s += temp
+
+            s += " "
+
+        s = s.strip(" ")
+        if colored:
+            s = colors.reset(s)
+        return s
+
     def is_const(self):
         return "const" in self.type_quals
     
     def formatted(self, colored: bool = False):
-        s = ""
-
-        # Stringify the type
-        if self.type_quals:
-            if colored:
-                s += colors.hex(" ".join(self.type_quals) + " ", QUALIFIER_COLOR)
-            else:
-                s += " ".join(self.type_quals) + " "
-        if colored:
-            s += colors.hex(" ".join(self.types), TYPE_COLOR)
-        else:
-            s += " ".join(self.types)
-
-        # Stringify the pointers
-        for p,pqs in zip(self.pointers, self.pointer_quals):
-            if colored:
-                s += colors.hex(p, POINTER_COLOR)
-            else:
-                s += p
-            if pqs is not None:
-                if colored:
-                    s += colors.hex(" ".join(pqs), QUALIFIER_COLOR)
-                else:
-                    s += " ".join(pqs)
-            s += " "
-        
-        # Stringify the name
-        if self.name:
-            if not s.endswith(" ") and len(s) > 0:
-                s += " "
-            if colored:
-                if isinstance(self._node, c_ast.FuncDecl):
-                    s += colors.hex(self.name, FUNC_NAME_COLOR)
-                else:
-                    s += colors.hex(self.name, VAR_NAME_COLOR)
-            else:
-                s += self.name
-
-        # Stringify the array
-        for a,aqs in zip(self.arrays, self.array_quals):
-            if colored:
-                s += colors.hex(a, POINTER_COLOR)
-            else:
-                s += a
-            if aqs is not None:
-                if colored:
-                    s += colors.hex(" ".join(aqs), QUALIFIER_COLOR)
-                else:
-                    s += " ".join(aqs)
-            s += " "
-        
-        while s[-1] == " ":
-            s = s[:-1]
-        
-        return s
+        return "{}{} {}{}".format(
+            self._stringify_type_name(colored),
+            self._stringify_type_pointers(colored),
+            self._stringify_name(colored),
+            self._stringify_arrays(colored)
+        )
 
 
 
@@ -323,13 +363,6 @@ def main():
     )
     v = MyFuncDeclFinder(prefixes)
 
-    # files = collect_h_file_paths(os.path.join("lvgl", "src"))
-
-    # with open("files.txt", "w") as f:
-    #     for path in v._files:
-    #         f.write(path)
-    #         f.write("\n")
-    # quit()
     with open("files.txt", "r") as f:
         files = [path[:-1] for path in f.readlines()]
 
