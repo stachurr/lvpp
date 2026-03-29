@@ -41,3 +41,11 @@ def rgb(s: str, r: int, g: int, b: int):
     g = _constrain_255(g)
     b = _constrain_255(b)
     return _make_color(s, "38;2;{};{};{}".format(r,g,b))
+
+def hex(s: str, hexcode: int):
+    b = hexcode & 0xff
+    hexcode >>= 8
+    g = hexcode & 0xff
+    hexcode >>= 8
+    r = hexcode & 0xff
+    return rgb(s, r, g, b)

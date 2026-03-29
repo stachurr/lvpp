@@ -15,10 +15,16 @@ import colors
 # Local path to CPP or GCC.
 CPP_PATH = "C:\\mingw\\w64devkit\\bin\\cpp.exe"
 
-# Debug options
-WRITE_FINDINGS_TO_FILE = False
 
 
+
+
+FUNC_NAME_COLOR = 0xe9c46a
+QUALIFIER_COLOR = 0x00296b
+POINTER_COLOR   = 0xb5179e
+BRACE_COLOR     = 0xf4a261
+VAR_NAME_COLOR  = 0x8ecae6
+TYPE_COLOR      = 0x0ead69
 
 
 
@@ -58,226 +64,147 @@ def get_widget_prefixes():
 
 
 
-def get_type_as_str(node):
-    type_str = ""
-    # is_const = False
-    quals = ""
-
-    while True:
-        if isinstance(node, c_ast.IdentifierType):
-            if len(node.names) != 1:
-                raise Exception("unexpected number of names (expected 1): {}".format(",".join(node.names)))
-            type_str = node.names[0] + type_str
-            # if is_const:
-            #     type_str = "const " + type_str
-            if quals:
-                type_str = " ".join(quals) + " " + type_str
-            break
-        elif isinstance(node, c_ast.TypeDecl):
-            # if len(node.quals) > 1:
-            #     raise Exception("unexpected number of qualifiers (expected 1): {}".format(",".join(node.quals)))
-            # if len(node.quals) == 1 and node.quals[0] == "const":
-            #     is_const = True
-            quals = node.quals
-        elif isinstance(node, c_ast.PtrDecl):
-            if len(type_str) > 0 and type_str[-1] != "*":
-                type_str += " "
-            type_str += "*"
-            if len(node.quals):
-                type_str += " ".join(node.quals)
-        elif isinstance(node, c_ast.ArrayDecl):
-            type_str += "[]"
-        
-        try:
-            node = node.type
-        except AttributeError as e:
-            raise Exception("Could not determine type")
-    return type_str
-
-
-
-def get_FuncDecl_name(node: c_ast.FuncDecl) -> str:
-    if not isinstance(node, c_ast.FuncDecl):
-        raise TypeError("node must be a FuncDecl")
-
-    while not isinstance(node.type, c_ast.TypeDecl):
-        node = node.type
-    
-    return node.type.declname
-
-# def get_FuncDecl_return_type(node: c_ast.FuncDecl):
-#     if not isinstance(node, c_ast.FuncDecl):
-#         raise TypeError("node must be a FuncDecl")
-#
-#     type_str = ""
-#     while not isinstance(node.type, c_ast.TypeDecl):
-#         if isinstance(node.type, c_ast.PtrDecl):
-#             type_str += "*"
-#         elif isinstance(node.type, c_ast.ArrayDecl):
-#             type_str += "[]"
-#         else:
-#             raise TypeError("unexpected node type: {}".format(type(node.type)))
-#         node = node.type
-#
-#     if
-#
-#     type_str = node.type.names[0] + type_str
-
-def get_FuncDecl_params(node: c_ast.FuncDecl):
-    if not isinstance(node, c_ast.FuncDecl):
-        raise TypeError("node must be a FuncDecl")
-    if not isinstance(node.args, c_ast.ParamList):
-        raise TypeError("node.args must be a ParamList")
-
-    for p in node.args.params:
-        type_str = ""
-        while True:
-            if isinstance(p.type, c_ast.PtrDecl):
-                type_str += "*"
-            elif isinstance(p.type, c_ast.ArrayDecl):
-                type_str += "[]"
-            elif isinstance(p.type, c_ast.TypeDecl):
-                break
-            else:
-                raise TypeError("unexpected node type: {}".format(type(p.type)))
-            p = p.type
-        
-        if not isinstance(p.type.type, c_ast.IdentifierType):
-            raise TypeError("must be an IdentifierType")
-
-        name = p.type.declname
-
-        identifier = p.type.type
-        if len(identifier.names) != 1:
-            raise Exception("unexpected number of names: {}".format(len(identifier.names)))
-        
-        name = identifier.names[0]
-    
-
-
-    
-
 
 @dataclass
-class LVGLFuncDeclParam:
-    is_const: bool
-    type: str
-    name: str
+class NodeTypeAndName:
+    type_quals:     List[str]
+    types:          List[str]
+    pointer_quals:  List[List[str]]
+    pointers:       List[str]
+    array_quals:    List[List[str]]
+    arrays:         List[str]
+    name:           str
+    _node:          c_ast.Node
+
+    @staticmethod
+    def from_node(node):
+        type_quals:     List[str]       = []
+        types:          List[str]       = []
+        pointer_quals:  List[List[str]] = []
+        pointers:       List[str]       = []
+        array_quals:    List[List[str]] = []
+        arrays:         List[str]       = []
+        name:           str             = ""
+        _node:          c_ast.Node      = node
+
+        while True:
+            quals = getattr(node, "quals", None)
+
+            if isinstance(node, c_ast.PtrDecl):
+                pointers.append("*")
+                pointer_quals.append(quals)
+            elif isinstance(node, c_ast.ArrayDecl):
+                arrays.append("[]")
+                array_quals.append(quals)
+            elif isinstance(node, c_ast.TypeDecl):
+                name = node.declname
+                if quals is not None:
+                    type_quals = quals
+            elif isinstance(node, c_ast.IdentifierType):
+                types = node.names
+                break
+            elif isinstance(node, c_ast.Struct):
+                break
+            elif isinstance(node, c_ast.EllipsisParam):
+                name = "..."
+                break
+
+            node = node.type
+
+        return NodeTypeAndName(type_quals, types, pointer_quals, pointers, array_quals, arrays, name, _node)
+    
+    def __repr__(self):
+        return self.__str__()
+
+    def __str__(self):
+        return self.formatted()
+
+    def is_const(self):
+        return "const" in self.type_quals
+    
+    def formatted(self, colored: bool = False):
+        s = ""
+
+        # Stringify the type
+        if self.type_quals:
+            if colored:
+                s += colors.hex(" ".join(self.type_quals) + " ", QUALIFIER_COLOR)
+            else:
+                s += " ".join(self.type_quals) + " "
+        if colored:
+            s += colors.hex(" ".join(self.types), TYPE_COLOR)
+        else:
+            s += " ".join(self.types)
+
+        # Stringify the pointers
+        for p,pqs in zip(self.pointers, self.pointer_quals):
+            if colored:
+                s += colors.hex(p, POINTER_COLOR)
+            else:
+                s += p
+            if pqs is not None:
+                if colored:
+                    s += colors.hex(" ".join(pqs), QUALIFIER_COLOR)
+                else:
+                    s += " ".join(pqs)
+            s += " "
+        
+        # Stringify the name
+        if self.name:
+            if not s.endswith(" ") and len(s) > 0:
+                s += " "
+            if colored:
+                if isinstance(self._node, c_ast.FuncDecl):
+                    s += colors.hex(self.name, FUNC_NAME_COLOR)
+                else:
+                    s += colors.hex(self.name, VAR_NAME_COLOR)
+            else:
+                s += self.name
+
+        # Stringify the array
+        for a,aqs in zip(self.arrays, self.array_quals):
+            if colored:
+                s += colors.hex(a, POINTER_COLOR)
+            else:
+                s += a
+            if aqs is not None:
+                if colored:
+                    s += colors.hex(" ".join(aqs), QUALIFIER_COLOR)
+                else:
+                    s += " ".join(aqs)
+            s += " "
+        
+        while s[-1] == " ":
+            s = s[:-1]
+        
+        return s
 
 
-def get_param_type(node) -> Tuple[bool, str]:
-    if isinstance(node, c_ast.PtrDecl):
-        is_const,name = get_param_type(node.type)
-        return (is_const, name + "*")
-    elif isinstance(node, c_ast.ArrayDecl):
-        is_const,name = get_param_type(node.type)
-        return (is_const, name + "[]")
-    elif isinstance(node, c_ast.TypeDecl):
-        if len(node.type.names) > 1:
-            raise Exception("unexpected number of names")
-        is_const = False
-        if node.quals:
-            if len(node.quals) > 1:
-                raise Exception("unexpected number of quals")
-            if node.quals[0] == "const":
-                is_const = True
-        return (is_const, node.type.names[0])
-    else:
-        raise Exception("unexpected node type")
 
-def get_param_name(node) -> str:
-    if isinstance(node, c_ast.PtrDecl):
-        return get_param_name(node.type)
-    elif isinstance(node, c_ast.ArrayDecl):
-        return get_param_name(node.type)
-    elif isinstance(node, c_ast.TypeDecl):
-        return node.declname
-    else:
-        raise Exception("unexpected node type")
 
 def get_funcDecl_params(decl: c_ast.FuncDecl):
     if not isinstance(decl, c_ast.FuncDecl):
         raise TypeError("Must be a FuncDecl")
     
-    params: List[LVGLFuncDeclParam] = []
+    params: List[NodeTypeAndName] = []
     for p in decl.args.params:
-        is_const, type = get_param_type(p.type)
-        name = get_param_name(p.type)
-        params.append(LVGLFuncDeclParam(is_const, type, name))
+        params.append(NodeTypeAndName.from_node(p))
     return params
     
-
-
 def pretty_print_FuncDecl(node: c_ast.FuncDecl):
     if not isinstance(node, c_ast.FuncDecl):
         raise TypeError("node must be a FuncDecl")
     
-    func_name = _MyFuncDeclVisitor._get_func_name(node)
-
-    pretty = colors.yellow(func_name)
-    pretty += "("
+    pretty = NodeTypeAndName.from_node(node).formatted(colored=True)
+    pretty += colors.hex("(", BRACE_COLOR)
     for p in get_funcDecl_params(node):
-        if p.is_const:
-            pretty += colors.magenta("const ")
-        if p.type.endswith("*"):
-            lhs,rhs = p.type.split("*", maxsplit=1)
-            rhs += "*"
-            pretty += colors.cyan(lhs)
-            pretty += colors.red(rhs)
-        elif p.type.endswith("[]"):
-            lhs,rhs = p.type.split("[]", maxsplit=1)
-            rhs += "[]"
-            pretty += colors.cyan(lhs)
-            pretty += colors.red(rhs)
-        else:
-            pretty += colors.cyan(p.type)
-        pretty += " "
-        pretty += colors.gray(p.name)
+        pretty += p.formatted(colored=True)
         pretty += ", "
     if pretty.endswith(", "):
         pretty = pretty.removesuffix(", ")
-    pretty += ")"
+    pretty += colors.hex(")", BRACE_COLOR)
     print(pretty)
 
-
-"""
-EXAMPLE
-****************************************************
-FuncDecl(args=ParamList(params=[Decl(name='obj',
-                                     quals=['const'
-                                           ],
-                                     align=[
-                                           ],
-                                     storage=[
-                                             ],
-                                     funcspec=[
-                                              ],
-                                     type=PtrDecl(quals=[
-                                                        ],
-                                                  type=TypeDecl(declname='obj',
-                                                                quals=['const'
-                                                                      ],
-                                                                align=None,
-                                                                type=IdentifierType(names=['lv_obj_t'
-                                                                                          ]
-                                                                                    )
-                                                                )
-                                                  ),
-                                     init=None,
-                                     bitsize=None
-                                     )
-                               ]
-                        ),
-         type=TypeDecl(declname='lv_obj_get_child_count',
-                       quals=[
-                             ],
-                       align=None,
-                       type=IdentifierType(names=['uint32_t'
-                                                 ]
-                                           )
-                       )
-         )
-"""
 
 
 class _MyFuncDeclVisitor(c_ast.NodeVisitor):
@@ -308,7 +235,7 @@ class _MyFuncDeclVisitor(c_ast.NodeVisitor):
         if node.coord.file.endswith("private.h"):
             return # Ignore functions added from private headers
         
-        func_name = get_FuncDecl_name(node)
+        func_name = NodeTypeAndName.from_node(node).name
         for p in self._prefixes:
             if func_name.startswith(p):
                 uid = self._hash_coord(node.coord)
@@ -406,26 +333,13 @@ def main():
     with open("files.txt", "r") as f:
         files = [path[:-1] for path in f.readlines()]
 
-    decls = v.find(files)
-    print(len(decls.items()))
+    decl_map = v.find(files)
+    for prefix,decls in decl_map.items():
+        print("\n{}*:".format(prefix))
+        for d in decls:
+            pretty_print_FuncDecl(d)
 
     v._print_findings_summary()
-    # if WRITE_FINDINGS_TO_FILE:
-    #     v._write_findings("findings.txt")
-
-    # def _get_name(n):
-    #     while not isinstance(n, c_ast.TypeDecl):
-    #         n = n.type
-    #     return n.declname
-    # for name in sorted([_get_name(decl) for decl in v._decls["lv_display_"]]):
-    #     print(name)
-
-
-    # for prefix,decls in v.items():
-    #     if prefix == "lv_obj_":
-    #         for d in decls:
-    #             # print(d.name, get_funcDecl_params(d.type))
-    #             pretty_print_FuncDecl(d)
 
 
 
