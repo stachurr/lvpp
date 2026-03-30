@@ -373,7 +373,7 @@ def main():
     )
     v = MyFuncDeclFinder(prefixes)
 
-    with open("files.txt", "r") as f:
+    with open("headers_shortlist.txt", "r") as f:
         files = [path[:-1] for path in f.readlines()]
 
     decl_map = v.find(files)
