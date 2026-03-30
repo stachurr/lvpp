@@ -173,7 +173,7 @@ class NodeTypeAndName:
         s = ""
 
         if colored:
-            if isinstance(self._node, c_ast.FuncDecl):
+            if self.is_function():
                 s += colors.hex(self.name, FUNC_NAME_COLOR, reset=False)
             else:
                 s += colors.hex(self.name, VAR_NAME_COLOR, reset=False)
@@ -207,6 +207,9 @@ class NodeTypeAndName:
         if colored:
             s = colors.reset(s)
         return s
+
+    def is_function(self):
+        return isinstance(self._node, c_ast.FuncDecl)
 
     def is_const(self):
         return "const" in self.type_quals
@@ -287,14 +290,21 @@ class _MyFuncDeclVisitor(c_ast.NodeVisitor):
                     break
 
     def visit_Decl(self, node: c_ast.Decl):
-        """
-        We use visit_Decl instead of visit_FuncDecl beacuse the latter
-        also catches typedef'd callback signatures.
-        """
-        if not isinstance(node, c_ast.Decl):
-            raise TypeError("Somehow a non-Decl was visited")
+        # IMPORTANT:
+        # Even though we want to visit FuncDecl's, we need to visit
+        # all Decl's otherwise we'd miss typedef'd callback signatures.
+
+        # Possible types of children:
+        #   FuncDecl
+        #   Struct
+        #   TypeDecl
+        #   PtrDecl
+        #   ArrayDecl
+        #   Enum
+
         if not isinstance(node.type, c_ast.FuncDecl):
             return
+        
         self._handle_FuncDecl(node.type)
 
 class MyFuncDeclFinder:
